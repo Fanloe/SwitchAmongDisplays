@@ -176,11 +176,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         // 短暂等待让光标移动稳定
         Thread.sleep(forTimeInterval: 0.05)
 
-        // 左键单击转移焦点
+        // 左键单击转移焦点（清空修饰键，防止 ⌘⌃ 从快捷键渗透到点击事件被 VS Code 误识别）
         if let down = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown,
                               mouseCursorPosition: movePoint, mouseButton: .left),
            let up = CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp,
                             mouseCursorPosition: movePoint, mouseButton: .left) {
+            down.flags = CGEventFlags()
+            up.flags = CGEventFlags()
             down.post(tap: .cghidEventTap)
             up.post(tap: .cghidEventTap)
         }
