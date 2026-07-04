@@ -146,48 +146,34 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let screens = NSScreen.screens
         guard !screens.isEmpty else { return }
 
-        // 根据光标实际位置判断当前所在屏幕
+        // 根据光标位置判断当前所在屏幕
         let mouseLocation = NSEvent.mouseLocation
         let currentScreen = screens.first(where: { $0.frame.contains(mouseLocation) })
             ?? NSScreen.main
             ?? screens[0]
 
-        // 用 frame 比对找索引（更健壮，不依赖对象指针相等）
         guard let currentIndex = screens.firstIndex(where: { $0.frame.equalTo(currentScreen.frame) }) else { return }
 
         let nextIndex = (currentIndex + 1) % screens.count
         let nextScreen = screens[nextIndex]
 
-        // 目标显示器在 NSScreen 坐标中的中心点（原点在主显示器左下角）
+        // 目标显示器中心（NSScreen 坐标，原点在主显示器左下角）
         let nsCenter = CGPoint(x: nextScreen.frame.midX, y: nextScreen.frame.midY)
 
         // 转换到 Quartz 全局坐标（原点在主显示器左上角，Y 向下）
-        let mainHeight = CGDisplayBounds(CGMainDisplayID()).size.height
-        let quartzPoint = CGPoint(x: nsCenter.x, y: mainHeight - nsCenter.y)
+        let mainBounds = CGDisplayBounds(CGMainDisplayID())
+        let clickX = Int(nsCenter.x)
+        let clickY = Int(mainBounds.size.height - nsCenter.y)
 
-        // 用 AppleScript 通过 Accessibility API 移动光标（最底层，最可靠）
+        // 通过 AppleScript / System Events 移动光标并左键单击
+        // 这比 CGEvent 更可靠，不会触发右击误识别
         let script = """
         tell application "System Events"
-            set position of mouse location to {\(Int(quartzPoint.x)), \(Int(quartzPoint.y))}
+            click at {\(clickX), \(clickY)}
         end tell
         """
         var scriptError: NSDictionary?
         NSAppleScript(source: script)?.executeAndReturnError(&scriptError)
-        if let err = scriptError {
-            NSLog("SwitchAmongDisplays: AppleScript move error: \(err)")
-        }
-
-        // 短暂等待让光标移动稳定
-        Thread.sleep(forTimeInterval: 0.05)
-
-        // 左键单击转移焦点
-        if let down = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown,
-                              mouseCursorPosition: quartzPoint, mouseButton: .left),
-           let up = CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp,
-                            mouseCursorPosition: quartzPoint, mouseButton: .left) {
-            down.post(tap: .cghidEventTap)
-            up.post(tap: .cghidEventTap)
-        }
     }
 
     // MARK: - 菜单栏
