@@ -162,18 +162,28 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         // 转换到 Quartz 全局坐标（原点在主显示器左上角，Y 向下）
         let mainBounds = CGDisplayBounds(CGMainDisplayID())
-        let clickX = Int(nsCenter.x)
-        let clickY = Int(mainBounds.size.height - nsCenter.y)
+        let movePoint = CGPoint(x: nsCenter.x, y: mainBounds.size.height - nsCenter.y)
 
-        // 通过 AppleScript / System Events 移动光标并左键单击
-        // 这比 CGEvent 更可靠，不会触发右击误识别
+        // 用 AppleScript 通过 Accessibility API 移动光标
         let script = """
         tell application "System Events"
-            click at {\(clickX), \(clickY)}
+            set position of mouse location to {\(Int(movePoint.x)), \(Int(movePoint.y))}
         end tell
         """
         var scriptError: NSDictionary?
         NSAppleScript(source: script)?.executeAndReturnError(&scriptError)
+
+        // 短暂等待让光标移动稳定
+        Thread.sleep(forTimeInterval: 0.05)
+
+        // 左键单击转移焦点
+        if let down = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown,
+                              mouseCursorPosition: movePoint, mouseButton: .left),
+           let up = CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp,
+                            mouseCursorPosition: movePoint, mouseButton: .left) {
+            down.post(tap: .cghidEventTap)
+            up.post(tap: .cghidEventTap)
+        }
     }
 
     // MARK: - 菜单栏
