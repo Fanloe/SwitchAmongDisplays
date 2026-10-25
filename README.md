@@ -57,6 +57,8 @@ open build/Build/Products/Release/SwitchAmongDisplays.app
 
 证书私钥丢失或轮换会导致所有用户下次更新时需要重新授权辅助功能。
 
+完整原理、流程图与踩坑记录见 [docs/release-signing-and-ci.md](docs/release-signing-and-ci.md)。
+
 ## Setup Instructions (Critical)
 
 The app asks for Accessibility permission on first launch. If you dismiss the prompt, grant it manually:
