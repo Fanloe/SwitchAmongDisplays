@@ -37,10 +37,7 @@ Without these permissions, the keyboard shortcut **will not work**.
 6. Check the box next to the app name
    ![](permissions-step3.png)
 
-> 💡 **Troubleshooting Tip**: If the app doesn't appear in the list:
-> ```bash
-> sudo chmod -R 755 /Applications/SwitchAmongDisplays.app
-> ```
+> 💡 **提示**：应用首次启动时会自动弹出辅助功能授权引导；如果列表里找不到它，先把应用放进 `/Applications` 再重启应用。
 
 #### 3. Verify Installation
 

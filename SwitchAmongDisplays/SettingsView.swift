@@ -17,7 +17,7 @@ struct SettingsView: View {
 
             Section(header: Text("About")) {
                 Text("SwitchAmongDisplays v1.0\n© 2026 梁子凡")
-                Link("View on GitHub", destination: URL(string: "https://github.com/your-username/SwitchAmongDisplays")!)
+                Link("View on GitHub", destination: URL(string: "https://github.com/Fanloe/SwitchAmongDisplays")!)
             }
         }
         .padding()

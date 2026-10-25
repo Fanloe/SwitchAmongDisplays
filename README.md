@@ -16,30 +16,43 @@ A simple utility app that lets you quickly switch between displays using a keybo
 
 ## Installation
 
-### Option 1: Build from Source
+### 一键安装（推荐）
 
-1. Clone this repository:
+```bash
+curl -fsSL https://github.com/Fanloe/SwitchAmongDisplays/releases/latest/download/install.sh | bash
+```
+
+### 手动安装
+
+1. 从 [Releases](https://github.com/Fanloe/SwitchAmongDisplays/releases/latest) 下载 `SwitchAmongDisplays.zip`
+2. 解压后把 `SwitchAmongDisplays.app` 拖进 `/Applications`
+3. 首次打开前，在终端执行（否则 macOS 会提示“已损坏，无法打开”）：
    ```bash
-   git clone https://github.com/your-username/SwitchAmongDisplays.git
-   cd SwitchAmongDisplays
+   xattr -dr com.apple.quarantine /Applications/SwitchAmongDisplays.app
    ```
+   或者先双击打开一次，被拦截后到 **系统设置 → 隐私与安全性** 点击 **仍要打开**。
 
-2. Open the project in Xcode:
-   ```bash
-   open SwitchAmongDisplays.xcodeproj
-   ```
+   > 应用没有 Apple 开发者签名和公证，所以下载后需要手动放行一次。macOS 15 起右键 → 打开的方式已失效。
 
-3. Build and run the app (⌘ + R)
+4. 启动后系统会弹窗请求辅助功能权限，点“打开系统设置”并勾选本应用即可。
 
-### Option 2: Pre-built Binary
+### 从源码构建
 
-1. Download the latest release from [Releases](https://github.com/your-username/SwitchAmongDisplays/releases)
-2. Unzip the file
-3. Move `SwitchAmongDisplays.app` to your Applications folder
+工程已配置为 ad-hoc 签名（Sign to Run Locally），**不需要 Apple 开发者账号**：
+
+1. Clone 本仓库，用 Xcode 打开 `SwitchAmongDisplays.xcodeproj`
+2. 选择 `SwitchAmongDisplays` scheme，⌘ + R 运行
+
+或使用命令行：
+
+```bash
+xcodebuild -scheme SwitchAmongDisplays -configuration Release -derivedDataPath build build
+open build/Build/Products/Release/SwitchAmongDisplays.app
+```
 
 ## Setup Instructions (Critical)
 
-After installing, you **must** grant Accessibility permissions for the keyboard shortcut to work:
+The app asks for Accessibility permission on first launch. If you dismiss the prompt, grant it manually:
 
 1. Open **System Settings** → **Privacy & Security** → **Accessibility**
 2. Click the **+** button at the bottom of the list
@@ -48,23 +61,19 @@ After installing, you **must** grant Accessibility permissions for the keyboard 
 
 ![Accessibility Permissions Setup](docs/permissions-setup.png)
 
-> ⚠️ **Important:** If you don't see the app in the list:
-> - Try moving the app to `/Applications` first
-> - If still not visible, open Terminal and run:
->   ```bash
->   sudo chmod -R 755 /Applications/SwitchAmongDisplays.app
->   ```
+> ⚠️ **更新后如果快捷键失效**：ad-hoc 签名的应用每次重新构建签名都会变，macOS 会因此撤销授权。到辅助功能列表里删除旧条目，再重新添加即可。
 
 ## Usage
 
 - Press **⌘ + ⇧ + D** (Command + Shift + D) to switch to the next display
-- The app runs in the background with a menu bar icon (optional in future versions)
-- To quit: Right-click the app in Dock and select "Quit"
+- The app runs as a menu bar utility (no Dock icon)
+- To quit: click the menu bar icon → **退出**
 
 ## Troubleshooting
 
 | Issue | Solution |
 |-------|----------|
+| “已损坏，无法打开” | 执行 `xattr -dr com.apple.quarantine /Applications/SwitchAmongDisplays.app` |
 | Shortcut not working | Verify Accessibility permissions are granted |
 | Only cycles through some displays | Make sure all displays are detected in System Settings → Displays |
 | App crashes on launch | Check Console.app for error logs |
@@ -76,11 +85,11 @@ After installing, you **must** grant Accessibility permissions for the keyboard 
 # Clean build
 xcodebuild clean
 
-# Build for current platform
-xcodebuild -scheme SwitchAmongDisplays -configuration Debug
+# Build (ad-hoc signed, no developer account needed)
+xcodebuild -scheme SwitchAmongDisplays -configuration Debug -derivedDataPath build
 
 # Run from command line
-open ./build/Debug/SwitchAmongDisplays.app
+open build/Build/Products/Debug/SwitchAmongDisplays.app
 ```
 
 ## Contributing

@@ -1,4 +1,6 @@
 import AppKit
+import ApplicationServices
+import Carbon.HIToolbox
 import SwiftUI
 
 // MARK: - 快捷键转显示文本
@@ -35,6 +37,18 @@ enum SettingsKey {
     static let isMonitoring = "isMonitoring"
 }
 
+// MARK: - 快捷键事件回调
+
+private func hotKeyEventHandler(
+    _ callRef: EventHandlerCallRef?,
+    _ event: EventRef?,
+    _ userData: UnsafeMutableRawPointer?
+) -> OSStatus {
+    guard let userData else { return OSStatus(eventNotHandledErr) }
+    Unmanaged<AppDelegate>.fromOpaque(userData).takeUnretainedValue().switchToNextDisplay()
+    return noErr
+}
+
 // MARK: - AppDelegate
 
 class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
@@ -43,7 +57,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         NSEvent.ModifierFlags.command.rawValue | NSEvent.ModifierFlags.shift.rawValue
     )
 
-    private var eventMonitor: Any?
+    private static let hotKeySignature: OSType = 0x53414421 // 'SAD!'
+    private var hotKeyRef: EventHotKeyRef?
+    private var eventHandler: EventHandlerRef?
     private var statusItem: NSStatusItem?
     private weak var mainWindow: NSWindow?
     private var defaultsObserver: NSObjectProtocol?
@@ -55,6 +71,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             SettingsKey.hotkeyModifiers: Self.defaultModifiers,
             SettingsKey.isMonitoring: true
         ])
+
+        // 首次运行直接弹窗引导授权辅助功能，用户不用手动去设置里找
+        if !AXIsProcessTrusted() {
+            let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+            AXIsProcessTrustedWithOptions(options)
+        }
 
         setupMenuBar()
         registerHotkey()
@@ -120,29 +142,64 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     // MARK: - 快捷键注册
 
+    /// Carbon 修饰键常量；同时用于过滤非法组合
+    private func carbonModifiers(from flags: NSEvent.ModifierFlags) -> UInt32 {
+        var modifiers: UInt32 = 0
+        if flags.contains(.command) { modifiers |= UInt32(cmdKey) }
+        if flags.contains(.shift)   { modifiers |= UInt32(shiftKey) }
+        if flags.contains(.option)  { modifiers |= UInt32(optionKey) }
+        if flags.contains(.control) { modifiers |= UInt32(controlKey) }
+        return modifiers
+    }
+
     private func registerHotkey() {
         guard isMonitoringEnabled else { return }
 
-        let targetKeyCode = currentKeyCode
-        let targetModifiers = currentModifiers
+        let modifiers = carbonModifiers(from: NSEvent.ModifierFlags(rawValue: currentModifiers))
+        // 没有修饰键会吞掉普通按键，不注册
+        guard modifiers != 0 else { return }
 
-        eventMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            let eventMods = event.modifierFlags.rawValue & NSEvent.ModifierFlags.deviceIndependentFlagsMask.rawValue
-            guard eventMods == targetModifiers, event.keyCode == targetKeyCode else { return }
-            self?.switchToNextDisplay()
+        var eventType = EventTypeSpec(
+            eventClass: OSType(kEventClassKeyboard),
+            eventKind: UInt32(kEventHotKeyPressed)
+        )
+        InstallEventHandler(
+            GetApplicationEventTarget(),
+            hotKeyEventHandler,
+            1,
+            &eventType,
+            Unmanaged.passUnretained(self).toOpaque(),
+            &eventHandler
+        )
+
+        let hotKeyID = EventHotKeyID(signature: Self.hotKeySignature, id: 1)
+        let status = RegisterEventHotKey(
+            UInt32(currentKeyCode),
+            modifiers,
+            hotKeyID,
+            GetApplicationEventTarget(),
+            0,
+            &hotKeyRef
+        )
+        if status != noErr {
+            NSLog("SwitchAmongDisplays: 快捷键注册失败，可能被其他应用占用（OSStatus \(status)）")
         }
     }
 
     private func unregisterHotkey() {
-        if let monitor = eventMonitor {
-            NSEvent.removeMonitor(monitor)
-            eventMonitor = nil
+        if let hotKeyRef {
+            UnregisterEventHotKey(hotKeyRef)
+            self.hotKeyRef = nil
+        }
+        if let eventHandler {
+            RemoveEventHandler(eventHandler)
+            self.eventHandler = nil
         }
     }
 
     // MARK: - 显示器切换
 
-    private func switchToNextDisplay() {
+    fileprivate func switchToNextDisplay() {
         let screens = NSScreen.screens
         guard !screens.isEmpty else { return }
 
@@ -164,19 +221,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let mainBounds = CGDisplayBounds(CGMainDisplayID())
         let movePoint = CGPoint(x: nsCenter.x, y: mainBounds.size.height - nsCenter.y)
 
-        // 用 AppleScript 通过 Accessibility API 移动光标
-        let script = """
-        tell application "System Events"
-            set position of mouse location to {\(Int(movePoint.x)), \(Int(movePoint.y))}
-        end tell
-        """
-        var scriptError: NSDictionary?
-        NSAppleScript(source: script)?.executeAndReturnError(&scriptError)
-
-        // 短暂等待让光标移动稳定
-        Thread.sleep(forTimeInterval: 0.05)
-
-        // 左键单击转移焦点（清空修饰键，防止 ⌘⌃ 从快捷键渗透到点击事件被 VS Code 误识别）
+        // 点击事件本身会把光标移到目标坐标，同时转移焦点
+        // 清空修饰键，防止 ⌘⌃ 从快捷键渗透到点击事件被 VS Code 误识别
         if let down = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown,
                               mouseCursorPosition: movePoint, mouseButton: .left),
            let up = CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp,
