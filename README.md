@@ -50,6 +50,13 @@ xcodebuild -scheme SwitchAmongDisplays -configuration Release -derivedDataPath b
 open build/Build/Products/Release/SwitchAmongDisplays.app
 ```
 
+### 发布（维护者）
+
+1. 首次发布：运行 `./scripts/make-signing-cert.sh`，把 `signing/key.pem` 离线备份；将 `signing/cert.p12.base64` 和 `signing/p12-password.txt` 分别设置为仓库 Secrets `SIGNING_CERT_P12`、`SIGNING_CERT_PASSWORD`（`signing/cert.pem` 是公开证书，随仓库提交）
+2. 推送 `v*` tag，CI 会构建 universal binary、用固定证书重签、验证并发布 Release
+
+证书私钥丢失或轮换会导致所有用户下次更新时需要重新授权辅助功能。
+
 ## Setup Instructions (Critical)
 
 The app asks for Accessibility permission on first launch. If you dismiss the prompt, grant it manually:
@@ -61,7 +68,11 @@ The app asks for Accessibility permission on first launch. If you dismiss the pr
 
 ![Accessibility Permissions Setup](docs/permissions-setup.png)
 
-> ⚠️ **更新后如果快捷键失效**：ad-hoc 签名的应用每次重新构建签名都会变，macOS 会因此撤销授权。到辅助功能列表里删除旧条目，再重新添加即可。
+> ⚠️ **更新后如果快捷键失效**：到辅助功能列表里删除旧条目，再重新添加即可。从使用固定自签名证书的版本开始，之后正常更新不再需要重新授权。
+
+### 签名说明
+
+发布包使用固定证书 `SwitchAmongDisplays Self-Signed` 签名（不是 Apple 开发者签名，也未经公证），因此仍需要手动放行 Gatekeeper 一次。但由于证书固定，macOS 的辅助功能授权绑定的是证书而不是每次构建的哈希，后续版本更新可以沿用同一份授权。
 
 ## Usage
 

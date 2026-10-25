@@ -21,10 +21,46 @@ jobs:
             MARKETING_VERSION="${GITHUB_REF_NAME#v}" \
             build
 
+      # A fixed certificate makes the designated requirement certificate-based,
+      # so the Accessibility (TCC) grant survives future updates. Without it the
+      # build stays ad-hoc and every update needs re-authorization.
+      - name: Import signing certificate
+        env:
+          CERT_P12: ${{ secrets.SIGNING_CERT_P12 }}
+          CERT_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
+        run: |
+          if [ -z "$CERT_P12" ]; then
+            echo "::warning::SIGNING_CERT_P12 not set — release will be ad-hoc signed; users must re-grant Accessibility after each update."
+            exit 0
+          fi
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          security create-keychain -p "$CERT_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$CERT_PASSWORD" "$KEYCHAIN"
+          printf '%s' "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$CERT_PASSWORD" "$KEYCHAIN"
+          security add-trusted-cert -r trustRoot -k "$KEYCHAIN" signing/cert.pem
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          EXPECTED=$(openssl x509 -in signing/cert.pem -noout -fingerprint -sha1 | cut -d= -f2 | tr -d ':')
+          ACTUAL=$(security find-identity -v -p codesigning "$KEYCHAIN" | awk '{print $2}' | head -1)
+          if [ "$EXPECTED" != "$ACTUAL" ]; then
+            echo "::error::导入的证书 ($ACTUAL) 与仓库中的 signing/cert.pem ($EXPECTED) 不一致，拒绝发布。"
+            exit 1
+          fi
+          echo "Signing identity: $ACTUAL"
+          echo "KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
+
       - name: Sign and package
         run: |
           APP="build/Build/Products/Release/SwitchAmongDisplays.app"
-          codesign --verify --strict "$APP"
+          if [ -n "${KEYCHAIN:-}" ]; then
+            codesign --force --options runtime \
+              --entitlements SwitchAmongDisplays/SwitchAmongDisplays.entitlements \
+              --sign "SwitchAmongDisplays Self-Signed" "$APP"
+          fi
+          codesign --verify --strict --verbose=2 "$APP"
+          codesign -d -r- "$APP" 2>&1 | tail -1
           lipo -archs "$APP/Contents/MacOS/SwitchAmongDisplays"
           ditto -c -k --keepParent "$APP" SwitchAmongDisplays.zip
 

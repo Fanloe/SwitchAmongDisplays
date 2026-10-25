@@ -24,3 +24,7 @@ Preview\ Content/
 # Other
 *.log
 *.tmp
+
+# Signing secrets — only the public cert is committed
+signing/*
+!signing/cert.pem
