@@ -40,10 +40,12 @@ jobs:
           printf '%s' "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
           security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$CERT_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$CERT_PASSWORD" "$KEYCHAIN"
-          security add-trusted-cert -r trustRoot -k "$KEYCHAIN" signing/cert.pem
+          # 不调用 add-trusted-cert：它在无 GUI 的 runner 上会等授权弹窗而挂死，
+          # 而 codesign 签名/验证并不需要证书被信任，只要 keychain 在搜索列表里。
           security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
           EXPECTED=$(openssl x509 -in signing/cert.pem -noout -fingerprint -sha1 | cut -d= -f2 | tr -d ':')
-          ACTUAL=$(security find-identity -v -p codesigning "$KEYCHAIN" | awk '{print $2}' | head -1)
+          # 证书未受信任时 find-identity -v 会返回 0 个，所以不加 -v
+          ACTUAL=$(security find-identity -p codesigning "$KEYCHAIN" | awk '/"SwitchAmongDisplays Self-Signed"/ {print $2; exit}')
           if [ "$EXPECTED" != "$ACTUAL" ]; then
             echo "::error::导入的证书 ($ACTUAL) 与仓库中的 signing/cert.pem ($EXPECTED) 不一致，拒绝发布。"
             exit 1
